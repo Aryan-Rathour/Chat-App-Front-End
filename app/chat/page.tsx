@@ -1,71 +1,73 @@
 "use client"
 
+import type React from "react"
+
 import { useState, useEffect, useRef } from "react"
 import useSocket from "../../hooks/useSocket"
-import { Send, Paperclip, Smile, MoreVertical, Phone, Video, Settings, LogOut } from 'lucide-react'
+import { Send, Phone, Video, MoreVertical, Settings, LogOut } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { useToast } from "@/hooks/use-toast"
-// import ProfileSettings from "@/components/profile-settings"
-import LoginForm from "../../components/login-form"
-import Hero from "@/components/Hero"
-import Features from "@/components/Features"
-import CTA from "@/components/CTA"
-import API from '../services/api';
-import axios from "axios"
+import ProfileSettings from "@/components/profile-settings"
+import LoginForm from "@/components/login-form"
+import EmojiPicker from "@/components/emoji-picker"
+import VoiceCall from "@/components/voice-call"
+import VideoCall from "@/components/video-call"
+import AttachmentMenu from "@/components/attachment-menu"
+import MessageContent from "@/components/message-content"
 
+// Define message type
+interface Message {
+  type: "text" | "image" | "document" | "audio" | "location"
+  content: any
+  sender: string
+  timestamp: string
+}
 
 const ChatPage = () => {
   const socket = useSocket()
-  const [messages, setMessages] = useState([
-    { text: "Hello there!", sender: "user2", timestamp: new Date(Date.now() - 3600000).toISOString() },
-    { text: "Hi! How are you?", sender: "user1", timestamp: new Date(Date.now() - 3500000).toISOString() },
+  const [messages, setMessages] = useState<Message[]>([
+    { type: "text", content: "Hello there!", sender: "user2", timestamp: new Date(Date.now() - 3600000).toISOString() },
     {
-      text: "I'm doing great, thanks for asking!",
+      type: "text",
+      content: "Hi! How are you?",
+      sender: "user1",
+      timestamp: new Date(Date.now() - 3500000).toISOString(),
+    },
+    {
+      type: "text",
+      content: "I'm doing great, thanks for asking!",
       sender: "user2",
       timestamp: new Date(Date.now() - 3400000).toISOString(),
     },
-    { text: "What are you up to today?", sender: "user1", timestamp: new Date(Date.now() - 3300000).toISOString() },
+    {
+      type: "text",
+      content: "What are you up to today?",
+      sender: "user1",
+      timestamp: new Date(Date.now() - 3300000).toISOString(),
+    },
   ])
   const [msg, setMsg] = useState("")
   const [isTyping, setIsTyping] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const chatContainerRef = useRef<HTMLDivElement>(null)
   const [username, setUsername] = useState<string>(() => {
-    if (typeof window !== 'undefined') {
+    if (typeof window !== "undefined") {
       return localStorage.getItem("username") || ""
     }
     return ""
   })
   const [profilePicture, setProfilePicture] = useState<string>(() => {
-    if (typeof window !== 'undefined') {
+    if (typeof window !== "undefined") {
       return localStorage.getItem("profilePicture") || "/placeholder-avatar.svg"
     }
     return "/placeholder-avatar.svg"
   })
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  const [isVoiceCallActive, setIsVoiceCallActive] = useState(false)
+  const [isVideoCallActive, setIsVideoCallActive] = useState(false)
   const { toast } = useToast()
-
-  const [rooms, setRooms] = useState([]);
-
-  useEffect(() => {
-    axios.get("http://localhost:5000/api/chat/rooms")
-      .then((res) => setRooms(res.data))
-      .catch((err) => console.error("API Error:", err));
-  }, []);
-
-  useEffect(() => {
-    axios.get("http://localhost:5000/api/ping")
-      .then((res) => console.log("✅ Connected to API:", res.data))
-      .catch((err) => console.error("❌ API Connection failed:", err));
-  }, []);
-
-  useEffect(() => {
-    API.get('/chat/rooms')
-      .then(res => setChatRooms(res.data))
-      .catch(err => console.error(err));
-  }, []);
 
   useEffect(() => {
     if (username) {
@@ -79,10 +81,10 @@ const ChatPage = () => {
   const sendMessage = () => {
     if (!msg.trim()) return
 
-    const newMsg = {
-      text: msg,
+    const newMsg: Message = {
+      type: "text",
+      content: msg,
       sender: "user1",
-      roomId: "room1",
       timestamp: new Date().toISOString(),
     }
 
@@ -109,11 +111,11 @@ const ChatPage = () => {
   useEffect(() => {
     socket.current.emit("joinRoom", { roomId: "room1" })
 
-    socket.current.on("receiveMessage", (message) => {
+    socket.current.on("receiveMessage", (message: Message) => {
       setMessages((prev) => [...prev, message])
     })
 
-    socket.current.on("userTyping", (data) => {
+    socket.current.on("userTyping", (data: { isTyping: boolean }) => {
       setIsTyping(data.isTyping)
     })
 
@@ -139,25 +141,95 @@ const ChatPage = () => {
     })
   }
 
+  const handleEmojiSelect = (emoji: string) => {
+    setMsg((prev) => prev + emoji)
+  }
+
+  const startVoiceCall = () => {
+    setIsVoiceCallActive(true)
+    toast({
+      title: "Voice Call Started",
+      description: "You are now in a voice call.",
+    })
+  }
+
+  const startVideoCall = () => {
+    setIsVideoCallActive(true)
+    toast({
+      title: "Video Call Started",
+      description: "You are now in a video call.",
+    })
+  }
+
+  const handleFileSelect = (file: File, type: string) => {
+    // For images and audio, create a data URL
+    if (type === "image" || type === "audio") {
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        const newMsg: Message = {
+          type: type as any,
+          content: reader.result,
+          sender: "user1",
+          timestamp: new Date().toISOString(),
+        }
+
+        socket.current.emit("sendMessage", newMsg)
+        setMessages((prev) => [...prev, newMsg])
+      }
+      reader.readAsDataURL(file)
+    }
+    // For documents, create an object with file details
+    else if (type === "document") {
+      const newMsg: Message = {
+        type: "document",
+        content: {
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          // In a real app, you would upload this file to a server and get a URL
+          url: URL.createObjectURL(file),
+        },
+        sender: "user1",
+        timestamp: new Date().toISOString(),
+      }
+
+      socket.current.emit("sendMessage", newMsg)
+      setMessages((prev) => [...prev, newMsg])
+    }
+    // For location, parse the JSON
+    else if (type === "location") {
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        try {
+          const locationData = JSON.parse(reader.result as string)
+          const newMsg: Message = {
+            type: "location",
+            content: locationData,
+            sender: "user1",
+            timestamp: new Date().toISOString(),
+          }
+
+          socket.current.emit("sendMessage", newMsg)
+          setMessages((prev) => [...prev, newMsg])
+        } catch (e) {
+          console.error("Failed to parse location data", e)
+        }
+      }
+      reader.readAsText(file)
+    }
+
+    toast({
+      title: "File Attached",
+      description: `Your ${type} has been attached and sent.`,
+    })
+  }
+
   if (!username) {
     return <LoginForm setUsername={setUsername} setProfilePicture={setProfilePicture} />
   }
 
-  function handleFileClick(e){
-    const file = e.target.files;
-
-    if (!file || file ===0){
-      const selectedFile = file[0];
-      console.log("selectedFile",)
-    }
-  }
-
   return (
     <div className="h-screen flex flex-col bg-gray-50">
-      <main className="bg-white text-gray-900">
-      
-    </main>
-      {/* <LoginForm/> */}
       {/* Header */}
       <div className="bg-[#5682a3] text-white p-3 flex items-center justify-between shadow-md">
         <div className="flex items-center gap-3">
@@ -171,8 +243,18 @@ const ChatPage = () => {
           </div>
         </div>
         <div className="flex items-center gap-4">
-          <Phone className="h-5 w-5 cursor-pointer hover:text-blue-200 transition-colors" />
-          <Video className="h-5 w-5 cursor-pointer hover:text-blue-200 transition-colors" />
+          <button
+            onClick={startVoiceCall}
+            className="h-8 w-8 flex items-center justify-center rounded-full hover:bg-[#4a7398] transition-colors"
+          >
+            <Phone className="h-5 w-5" />
+          </button>
+          <button
+            onClick={startVideoCall}
+            className="h-8 w-8 flex items-center justify-center rounded-full hover:bg-[#4a7398] transition-colors"
+          >
+            <Video className="h-5 w-5" />
+          </button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="h-8 w-8 p-0 text-white hover:bg-[#4a7398]">
@@ -194,6 +276,7 @@ const ChatPage = () => {
         </div>
       </div>
 
+      {/* Messages */}
       <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 space-y-3 bg-[#e7ebf0]">
         {messages.map((m, i) => {
           const isUser = m.sender === "user1"
@@ -215,9 +298,10 @@ const ChatPage = () => {
                     shadow-sm
                   `}
                 >
-                  <p className="whitespace-pre-wrap break-words">{m.text}</p>
+                  <MessageContent content={m.content} type={m.type} />
                   <span className="text-[10px] text-gray-500 block text-right mt-1">{formatTime(m.timestamp)}</span>
 
+                  {/* Message tail */}
                   <div
                     className={`absolute bottom-0 ${isUser ? "-right-2" : "-left-2"} w-4 h-4 overflow-hidden`}
                     style={{ transform: isUser ? "scaleX(-1)" : "" }}
@@ -235,9 +319,10 @@ const ChatPage = () => {
         <div ref={messagesEndRef} />
       </div>
 
+      {/* Input area */}
       <div className="bg-white border-t border-gray-200 p-3">
         <div className="flex items-center gap-2 bg-[#f5f5f5] rounded-full px-4 py-2">
-          <Paperclip className="h-5 w-5 text-gray-500 cursor-pointer hover:text-[#5682a3] transition-colors" />
+          <AttachmentMenu onFileSelect={handleFileSelect} />
           <textarea
             className="flex-1 bg-transparent outline-none resize-none max-h-32 py-1"
             value={msg}
@@ -245,9 +330,8 @@ const ChatPage = () => {
             onKeyDown={handleKeyDown}
             placeholder="Message"
             rows={1}
-            onClick={handleFileClick}
           />
-          <Smile className="h-5 w-5 text-gray-500 cursor-pointer hover:text-[#5682a3] transition-colors" />
+          <EmojiPicker onEmojiSelect={handleEmojiSelect} />
           <Button
             onClick={sendMessage}
             disabled={!msg.trim()}
@@ -258,6 +342,8 @@ const ChatPage = () => {
           </Button>
         </div>
       </div>
+
+      {/* Modals */}
       {isSettingsOpen && (
         <ProfileSettings
           username={username}
@@ -267,8 +353,17 @@ const ChatPage = () => {
           onClose={() => setIsSettingsOpen(false)}
         />
       )}
+
+      {isVoiceCallActive && (
+        <VoiceCall username={username} profilePicture={profilePicture} onClose={() => setIsVoiceCallActive(false)} />
+      )}
+
+      {isVideoCallActive && (
+        <VideoCall username={username} profilePicture={profilePicture} onClose={() => setIsVideoCallActive(false)} />
+      )}
     </div>
   )
 }
 
-export default ChatPage;
+export default ChatPage
+
